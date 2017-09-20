@@ -1,14 +1,18 @@
 package com.bilalsukkarieh.popularmovies;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
+import com.bilalsukkarieh.popularmovies.utils.Utils;
 import com.squareup.picasso.Picasso;
 
+import java.io.File;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,18 +20,17 @@ import java.util.HashMap;
 class MovieAdapter extends RecyclerView.Adapter<MovieAdapter.MovieHolder>{
 
     private Context context;
-    private ArrayList<HashMap<String, String>> movieData;
     private ItemClickListener mItemClickListener;
+    private Cursor movieCursor;
 
     //click interface
     interface ItemClickListener{
         //pass the movie id and the thumnail url to the click to be used in intent
-        void onItemClick(String itemId, URL itemImageURL);
+        void onItemClick(Cursor itemCursor);
     }
     //constructor of class
-    public MovieAdapter(Context c, ArrayList<HashMap<String,String>> mData, ItemClickListener listItemClickListener){
+    public MovieAdapter(Context c, ItemClickListener listItemClickListener){
         this.context = c;
-        this.movieData = mData;
         mItemClickListener = listItemClickListener;
     }
 
@@ -42,15 +45,26 @@ class MovieAdapter extends RecyclerView.Adapter<MovieAdapter.MovieHolder>{
 
     @Override
     public void onBindViewHolder(MovieHolder holder, int position) {
-        //populate the view with the data
-        URL itemURL = Utils.getURL(movieData.get(position).get("imageURL"));
-        Picasso.with(context).load(itemURL.toString()).into(holder.getMovieThumbnail());
+        movieCursor.moveToPosition(position);
+
+        String movieimg = movieCursor.getString(MainActivity.INDEX_MOVIE_IMAGE);
+        File f = new File(movieimg);
+        Log.i("service", "picasso " + movieimg);
+        Picasso.with(context).load(f).into(holder.getMovieThumbnail());
+//        //populate the view with the data
+//        URL itemURL = Utils.getURL(movieData.get(position).get("imageURL"));
+//        Picasso.with(context).load(itemURL.toString()).into(holder.getMovieThumbnail());
     }
 
     @Override
     public int getItemCount() {
         //return the items count
-        return movieData.size();
+        return movieCursor.getCount();
+    }
+
+    void swapCursor(Cursor newCursor) {
+        movieCursor = newCursor;
+        notifyDataSetChanged();
     }
 
     class MovieHolder extends RecyclerView.ViewHolder implements View.OnClickListener{
@@ -73,9 +87,9 @@ class MovieAdapter extends RecyclerView.Adapter<MovieAdapter.MovieHolder>{
         @Override
         public void onClick(View view) {
             //pass the data onto the click to be used in intent
-            String itemMovieId = movieData.get(getAdapterPosition()).get("id");
-            URL itemImageURL = Utils.getURL(movieData.get(getAdapterPosition()).get("imageURL"));
-            mItemClickListener.onItemClick(itemMovieId, itemImageURL);
+            movieCursor.moveToPosition(getAdapterPosition());
+
+            mItemClickListener.onItemClick(movieCursor);
         }
     }
 

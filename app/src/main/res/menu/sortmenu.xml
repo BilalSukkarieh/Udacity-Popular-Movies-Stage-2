@@ -10,5 +10,11 @@
         android:id="@+id/action_sort_top"
         android:title="@string/toprated"
         app:showAsAction="never"/>
+    <item
+        android:id="@+id/action_favorites"
+        android:title="@string/fav"
+        app:showAsAction="always"
+        android:icon="@drawable/ic_is_favorite"/>
+
 
 </menu>

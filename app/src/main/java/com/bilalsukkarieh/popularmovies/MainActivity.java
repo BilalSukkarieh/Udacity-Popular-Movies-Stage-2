@@ -1,8 +1,15 @@
 package com.bilalsukkarieh.popularmovies;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
-import android.os.AsyncTask;
+import android.os.Parcelable;
+import android.os.PersistableBundle;
+import android.preference.PreferenceManager;
+import android.support.v4.app.LoaderManager;
+import android.support.v4.content.CursorLoader;
+import android.support.v4.content.Loader;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.GridLayoutManager;
@@ -13,30 +20,57 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ProgressBar;
-import android.widget.Toast;
+import android.widget.TextView;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashMap;
+import com.bilalsukkarieh.popularmovies.data.MovieContract;
+import com.bilalsukkarieh.popularmovies.data.MoviePreferences;
+import com.bilalsukkarieh.popularmovies.sync.MovieSyncUtils;
 
 
-public class MainActivity extends AppCompatActivity implements MovieAdapter.ItemClickListener{
+
+public class MainActivity extends AppCompatActivity implements  MovieAdapter.ItemClickListener, LoaderManager.LoaderCallbacks<Cursor>{
 
     //declaring class variables
-    final String TAG = "mainactLog";
-    ArrayList<HashMap<String,String>> movieData;
+    MovieAdapter movieAdapter;
     RecyclerView rv_movie_grid;
-    final String BASE_IMAGE_URL = "http://image.tmdb.org/t/p/";
-    final String IMAGE_SIZE_PARAM = "w500";
-    URL imageURL;
-    String movieSort = "popular";
+    public static String movieSort;
     ProgressBar pb;
-    GetMovies getMovies;
-    HashMap<String,String> hashMap;
+    private int recyclerPosition = RecyclerView.NO_POSITION;
+    SharedPreferences.OnSharedPreferenceChangeListener prefListener;
+    String querySelection;
+    TextView tv_nofav;
+    GridLayoutManager gridLayoutManager;
+    Parcelable recyclerState;
+
+    final static int MOVIE_LOADER_ID = 89;
+
+    public static final String[] MAINACTIVITY_MOVIE_PROJECTION = {
+            MovieContract.MovieEntry.COLUMN_MOVIE_ID,
+            MovieContract.MovieEntry.COLUMN_MOVIE_LOCAL_IMAGE,
+            MovieContract.MovieEntry.COLUMN_MOVIE_TITLE,
+            MovieContract.MovieEntry.COLUMN_MOVIE_DESCRIPTION,
+            MovieContract.MovieEntry.COLUMN_MOVIE_RELEASE,
+            MovieContract.MovieEntry.COLUMN_MOVIE_DURATION,
+            MovieContract.MovieEntry.COLUMN_MOVIE_RATING,
+            MovieContract.MovieEntry.COLUMN_MOVIE_FAVORITE,
+            MovieContract.MovieEntry.COLUMN_MOVIE_SORT_TYPE,
+            MovieContract.MovieEntry.COLUMN_MOVIE_SORT
+
+    };
+
+    public static final int INDEX_MOVIE_ID = 0;
+    public static final int INDEX_MOVIE_IMAGE = 1;
+    public static final int INDEX_MOVIE_TITLE = 2;
+    public static final int INDEX_MOVIE_DESCRIPTION = 3;
+    public static final int INDEX_MOVIE_RELEASE = 4;
+    public static final int INDEX_MOVIE_DURATION = 5;
+    public static final int INDEX_MOVIE_RATING = 6;
+    public static final int INDEX_MOVIE_FAVORITE = 7;
+    public static final int INDEX_MOVIE_SORT_TYPE = 8;
+    public static final int INDEX_MOVIE_SORT = 9;
+
+
+
 
 
     @Override
@@ -47,16 +81,58 @@ public class MainActivity extends AppCompatActivity implements MovieAdapter.Item
         //referencing required ui elements
         rv_movie_grid = findViewById(R.id.rv_movie_grid);
         pb = findViewById(R.id.pb_load_images);
+        tv_nofav = findViewById(R.id.tv_no_fav);
 
-        //setting activity label to most popular as it is default sort
-        getSupportActionBar().setTitle(getString(R.string.mostpopular));
 
-        movieData = new ArrayList<>();
 
-        //creating asynctask instance to retrieve moviews according to sort default is most popular
-        getMovies = new GetMovies();
-        getMovies.execute(movieSort);
+        movieSort = MoviePreferences.getPreferedSort(this);
+        querySelection = MovieContract.MovieEntry.COLUMN_MOVIE_SORT_TYPE + " = " + "'" + movieSort + "'";
 
+        if(movieSort.equals(MoviePreferences.POPULAR_SORT_PREFERENCE)){
+            //setting activity label to most popular as it is default sort
+            getSupportActionBar().setTitle(getString(R.string.mostpopular));
+        }else if(movieSort.equals(MoviePreferences.TOP_SORT_PREFERENCE)){
+            //setting activity label to most popular as it is default sort
+            getSupportActionBar().setTitle(getString(R.string.toprated));
+        }else if(movieSort.equals(MoviePreferences.FAVORITE_PREFERENCE)){
+            getSupportActionBar().setTitle(getString(R.string.favtitle));
+        }
+
+        setRecycler();
+
+        prefListener = new SharedPreferences.OnSharedPreferenceChangeListener(){
+            public void onSharedPreferenceChanged(SharedPreferences prefs, String key) {
+                if(key.equals(MoviePreferences.SORT_PREFERENCE_KEY)){
+                    if(!prefs.getString(MoviePreferences.SORT_PREFERENCE_KEY, MoviePreferences.POPULAR_SORT_PREFERENCE).equals(MoviePreferences.FAVORITE_PREFERENCE)){
+                        movieSort = MoviePreferences.getPreferedSort(MainActivity.this);
+                        querySelection = MovieContract.MovieEntry.COLUMN_MOVIE_SORT_TYPE + " = " + "'" + movieSort + "'";
+                        getSupportLoaderManager().restartLoader(MOVIE_LOADER_ID, null, MainActivity.this);
+                    }else{
+                        getFavorites();
+                    }
+                }
+            }
+        };
+
+        showLoading();
+
+        getSupportLoaderManager().initLoader(MOVIE_LOADER_ID, null, this);
+
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
+        sp.registerOnSharedPreferenceChangeListener(prefListener);
+
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
+        sp.unregisterOnSharedPreferenceChangeListener(prefListener);
     }
 
     @Override
@@ -69,126 +145,149 @@ public class MainActivity extends AppCompatActivity implements MovieAdapter.Item
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if(item.getItemId() == R.id.action_sort_popular){
-            // change sort to most popular if user chose so
-            movieSort = "popular";
-            //cancel the running task and instantiate new instance with the new sort
-            getMovies.cancel(true);
-            getMovies = null;
-            getMovies = new GetMovies();
-            getMovies.execute(movieSort);
+            MoviePreferences.setPreferedSort(MainActivity.this, MoviePreferences.POPULAR_SORT_PREFERENCE);
+            showLoading();
             //change the label of activity to mach the sort chosen by user
             getSupportActionBar().setTitle(getString(R.string.mostpopular));
         }
         if(item.getItemId() == R.id.action_sort_top){
-            // change sort to most popular if user chose so
-            movieSort = "top_rated";
-            //cancel the running task and instantiate new instance with the new sort
-            getMovies.cancel(true);
-            getMovies = null;
-            getMovies = new GetMovies();
-            getMovies.execute(movieSort);
+            MoviePreferences.setPreferedSort(MainActivity.this, MoviePreferences.TOP_SORT_PREFERENCE);
+            showLoading();
             //change the label of activity to mach the sort chosen by user
             getSupportActionBar().setTitle(getString(R.string.toprated));
+        }
+        if(item.getItemId() == R.id.action_favorites){
+            MoviePreferences.setPreferedSort(MainActivity.this, MoviePreferences.FAVORITE_PREFERENCE);
+            getFavorites();
         }
         return true;
     }
 
-    //asynctask with a string argument to be able to change the sort
-    private class GetMovies extends AsyncTask<String, Void, Void> {
 
-        @Override
-        protected void onPreExecute() {
-            //display a progress bar and hide the details view while task is processing
-            super.onPreExecute();
-            pb.setVisibility(View.VISIBLE);
-            rv_movie_grid.setVisibility(View.GONE);
-        }
+    @Override
+    public Loader<Cursor> onCreateLoader(int id, Bundle args) {
+        switch (id){
+            case MOVIE_LOADER_ID:
+                Uri moviesUri = MovieContract.MOVIE_CONTENT_URI;
+                String sortOrder = MovieContract.MovieEntry.COLUMN_MOVIE_SORT + " ASC";
+                //String selection = MovieContract.MovieEntry.COLUMN_MOVIE_SORT_TYPE + " = " + "'" + movieSort + "'";
 
-        @Override
-        protected Void doInBackground(String... s) {
-            //use the http handler class to retriece data from api as json
-            HttpHandler httpHandler = new HttpHandler();
-            String url = "http://api.themoviedb.org/3/movie/"+s[0]+"?api_key=" + getString(R.string.moviedbapi);
-            String jsonStr = httpHandler.makeServiceCall(url);
-            //clear the movie data list to avoid duplicate data when changing sort or when new query is made
-            movieData.clear();
-            if (jsonStr != null) {
-                //try retrieving json data and catch any error
-                try {
-                    //set the retreived data to a json object to handle it
-                    JSONObject jsonObj = new JSONObject(jsonStr);
-                    //results are stored in json array
-                    JSONArray movies = jsonObj.getJSONArray("results");
-                    //loop the json array to get data of each movie
-                    for (int i = 0; i < movies.length(); i++) {
-                        JSONObject movie = movies.getJSONObject(i);
-                        //get the required data id is retrieved to be used for movie details
-                        String posterPath = movie.getString("poster_path");
-                        String movieId = String.valueOf(movie.getInt("id"));
-
-                        //build uri of the thumbnail
-                        Uri imageUri = Uri.parse(BASE_IMAGE_URL).buildUpon()
-                                .appendPath(IMAGE_SIZE_PARAM)
-                                .appendEncodedPath(posterPath)
-                                .build();
-                        //convert the uri to url
-                        try{
-                            imageURL = new URL(imageUri.toString());
-
-                        }catch (Exception e){
-                            e.printStackTrace();
-                        }
-                        Log.d(TAG, "" + imageURL);
-
-                        //hash map is used to pass the thumbnail url and movie id
-                        hashMap = new HashMap<>();
-
-                        hashMap.put("id", movieId);
-                        hashMap.put("imageURL", imageURL.toString());
-
-                        //retrieved data is stored in list
-                        movieData.add(hashMap);
-                    }
-                    Log.d(TAG, "" + hashMap);
-                } catch (final JSONException e) {
-                    //catch the json parsing error and get the info in log
-                    Log.e(TAG, "Json parsing error: " + e.getMessage());
-                }
-
-            } else {
-                //catch the error of no data is retrieved from api
-                Log.e(TAG, "Couldn't get json from server.");
-
-            }
-
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(Void result) {
-            super.onPostExecute(result);
-            //populate the data on completion of task
-            MovieAdapter adapter = new MovieAdapter(MainActivity.this, movieData, MainActivity.this);
-            RecyclerView.LayoutManager lm = new GridLayoutManager(MainActivity.this, 2, LinearLayoutManager.VERTICAL, false);
-            rv_movie_grid.setLayoutManager(lm);
-            rv_movie_grid.setHasFixedSize(true);
-            rv_movie_grid.setAdapter(adapter);
-            //hide the progress bar and show the thumbnails
-            pb.setVisibility(View.GONE);
-            rv_movie_grid.setVisibility(View.VISIBLE);
+                return new CursorLoader(this,
+                        moviesUri,
+                        MAINACTIVITY_MOVIE_PROJECTION,
+                        querySelection,
+                        null,
+                        sortOrder);
+            default:
+                throw new RuntimeException("invalid loader: " + id);
         }
     }
 
     @Override
-    public void onItemClick(String movieId, URL itemImageURL) {
-        //on thumbnail or item is clicked start movie detail intent with
-        //the thumbnail url and movie id as extras for retrieval of selected movie details
-        Intent movieDetailIntent = new Intent(MainActivity.this, MovieDetails.class);
-        movieDetailIntent.putExtra("movieId", movieId);
-        movieDetailIntent.putExtra("thumbnailURL", itemImageURL.toString());
-        startActivity(movieDetailIntent);
+    public void onLoadFinished(Loader<Cursor> loader, Cursor data) {
+        movieAdapter.swapCursor(data);
+        if (recyclerPosition == RecyclerView.NO_POSITION){
+            recyclerPosition = 0;
+        }
+        rv_movie_grid.smoothScrollToPosition(recyclerPosition);
+        if(querySelection.equals(MovieContract.MovieEntry.COLUMN_MOVIE_FAVORITE + " = 1")){
+            if (data.getCount() != 0){
+                showData();
+            }else{
+                showNoFav();
+            }
+
+        }else{
+            if (data.getCount() != 0){
+                showData();
+            }else{
+                if(MovieSyncUtils.isInitialized){
+                    MovieSyncUtils.startImmediateSync(this, movieSort, MovieSyncUtils.TASK_MOVIES, null);
+                }else{
+                    MovieSyncUtils.initService(this, movieSort, MovieSyncUtils.TASK_MOVIES, null);
+                }
+
+            }
+        }
+    }
+
+    @Override
+    public void onLoaderReset(Loader<Cursor> loader) {
+        movieAdapter.swapCursor(null);
     }
 
 
+    private void showLoading(){
+        pb.setVisibility(View.VISIBLE);
+        rv_movie_grid.setVisibility(View.GONE);
+        tv_nofav.setVisibility(View.GONE);
+
+    }
+
+    private void showData(){
+        pb.setVisibility(View.GONE);
+        rv_movie_grid.setVisibility(View.VISIBLE);
+        tv_nofav.setVisibility(View.GONE);
+    }
+
+    public void showNoFav(){
+        pb.setVisibility(View.GONE);
+        rv_movie_grid.setVisibility(View.GONE);
+        tv_nofav.setVisibility(View.VISIBLE);
+    }
+
+    public void setRecycler(){
+        gridLayoutManager = new GridLayoutManager(MainActivity.this, 2, LinearLayoutManager.VERTICAL, false);
+
+        rv_movie_grid.setLayoutManager(gridLayoutManager);
+        rv_movie_grid.setHasFixedSize(true);
+
+        movieAdapter = new MovieAdapter(this, this);
+
+        rv_movie_grid.setAdapter(movieAdapter);
+    }
+
+    public void getFavorites(){
+        getSupportActionBar().setTitle(getString(R.string.favtitle));
+        querySelection = MovieContract.MovieEntry.COLUMN_MOVIE_FAVORITE + " = 1";
+        showLoading();
+        getSupportLoaderManager().restartLoader(MOVIE_LOADER_ID, null, MainActivity.this);
+    }
+
+    @Override
+    public void onItemClick(Cursor itemCursor) {
+        //on thumbnail or item is clicked start movie detail intent with
+        //the thumbnail url and movie id as extras for retrieval of selected movie details
+        Intent movieDetailIntent = new Intent(MainActivity.this, MovieDetails.class);
+        movieDetailIntent.putExtra("movieId", String.valueOf(itemCursor.getInt(INDEX_MOVIE_ID)));
+        movieDetailIntent.putExtra("imgpath", itemCursor.getString(INDEX_MOVIE_IMAGE));
+        movieDetailIntent.putExtra("title", itemCursor.getString(INDEX_MOVIE_TITLE));
+        movieDetailIntent.putExtra("description", itemCursor.getString(INDEX_MOVIE_DESCRIPTION));
+        movieDetailIntent.putExtra("release", itemCursor.getString(INDEX_MOVIE_RELEASE));
+        movieDetailIntent.putExtra("duration", itemCursor.getString(INDEX_MOVIE_DURATION));
+        movieDetailIntent.putExtra("rating", itemCursor.getString(INDEX_MOVIE_RATING));
+        movieDetailIntent.putExtra("favorite", itemCursor.getString(INDEX_MOVIE_FAVORITE));
+        movieDetailIntent.putExtra("sorttype", itemCursor.getString(INDEX_MOVIE_SORT_TYPE));
+        movieDetailIntent.putExtra("sort", itemCursor.getInt(INDEX_MOVIE_SORT));
+        startActivity(movieDetailIntent);
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        int recpos = gridLayoutManager.findFirstVisibleItemPosition();
+        outState.putInt("recpos", recpos);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        if(savedInstanceState != null){
+            int recpos = savedInstanceState.getInt("recpos");
+            rv_movie_grid.scrollToPosition(recpos);
+        }
+    }
+
+    //TODO fix loading menu click
 }
 

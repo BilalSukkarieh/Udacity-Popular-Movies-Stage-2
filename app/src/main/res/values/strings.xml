@@ -6,14 +6,36 @@
 
     <string name="mostpopular">Most Popular</string>
     <string name="toprated">Top Rated</string>
+    <string name="fav">Favorites</string>
 
     <string name="moviedetailslabel">Movie Details</string>
-    
-    <string name="releasedate">Released: %s</string>
-    <string name="averagerating">Rating: %s /10</string>
-    <string name="duration">Duration: %s minutes</string>
-    <string name="overview">Overview: \n %s</string>
+    <string name="favoritemovieslabel">My Favorites</string>
+
+    <string name="releasedatelabel">Released: </string>
+    <string name="releasedate">%s</string>
+    <string name="ratinglabel">Rating: </string>
+    <string name="averagerating">%s /10</string>
+    <string name="durationlabel">Duration: </string>
+    <string name="duration">%s minutes</string>
+    <string name="overviewlabel">Overview: </string>
+    <string name="overview">%s</string>
+    <string name="trailerslabel">Trailers: </string>
+    <string name="reviews">Reviews</string>
 
     <string name="imagedescription">Thumbnail</string>
 
+    <string name="removedfav">Movie Removed From Favorites</string>
+    <string name="addedtofav">Movie Added to Favorites</string>
+
+    <string name="notrailers">No Trailers</string>
+    <string name="noreviews">No Reviews</string>
+
+    <string name="reviewactivitytitle">Movie Reviews</string>
+
+    <string name="reviewdialogtitle">Choose Action</string>
+    <string name="trailerdialogshare">Share Trailer</string>
+    <string name="trailerdialogplay">Play Trailer</string>
+
+    <string name="favtitle">Favorites</string>
+    <string name="nofav">No Favorites :( \n Add Some Now !</string>
 </resources>

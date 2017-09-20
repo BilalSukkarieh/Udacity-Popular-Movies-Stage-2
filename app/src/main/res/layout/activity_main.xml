@@ -9,6 +9,16 @@
     android:padding="0dp"
     tools:context="com.bilalsukkarieh.popularmovies.MainActivity">
 
+    <TextView
+        android:id="@+id/tv_no_fav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/nofav"
+        android:textAlignment="center"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <ProgressBar
         android:id="@+id/pb_load_images"
         style="?android:attr/progressBarStyle"

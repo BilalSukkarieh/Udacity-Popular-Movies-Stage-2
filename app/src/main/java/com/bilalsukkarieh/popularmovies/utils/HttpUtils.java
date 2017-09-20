@@ -1,5 +1,6 @@
-package com.bilalsukkarieh.popularmovies;
+package com.bilalsukkarieh.popularmovies.utils;
 
+import android.content.Context;
 import android.util.Log;
 
 import java.io.BufferedInputStream;
@@ -11,18 +12,19 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.net.URLConnection;
 
-class HttpHandler {
+public class HttpUtils {
 
     //declare required variebles
     private static final String TAG = "httphandlerLog";
 
     //construvtor
-    HttpHandler() {
+    public HttpUtils() {
     }
 
     //function to retreive json as string
-    String makeServiceCall(String reqUrl) {
+    public String makeServiceCall(String reqUrl) {
         String response = null;
         try {
             URL url = new URL(reqUrl);
@@ -64,5 +66,39 @@ class HttpHandler {
         }
 
         return sb.toString();
+    }
+
+    public InputStream OpenHttpConnection(String urlString)
+            throws IOException
+
+    {
+
+        InputStream in = null;
+
+        int response = -1;
+
+        URL url = new URL(urlString);
+        URLConnection conn = url.openConnection();
+
+        if (!(conn instanceof HttpURLConnection))
+            throw new IOException("Not an HTTP connection");
+
+        try{
+            HttpURLConnection httpConn = (HttpURLConnection) conn;
+            httpConn.setAllowUserInteraction(false);
+            httpConn.setInstanceFollowRedirects(true);
+            httpConn.setRequestMethod("GET");
+            httpConn.connect();
+
+            response = httpConn.getResponseCode();
+            if (response == HttpURLConnection.HTTP_OK) {
+                in = httpConn.getInputStream();
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new IOException("Error connecting");
+        }
+        return in;
     }
 }
